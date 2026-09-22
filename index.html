@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>3D 太陽・地球・月のモデル</title>
+<style>
+  :root {
+    --bg-top: #0a1a2f;
+    --bg-bottom: #02060f;
+    --panel-border: rgba(255,255,255,0.18);
+    --text: #eaf2ff;
+    --accent: #4ea8ff;
+    --sun: #ffcc55;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: radial-gradient(circle at 50% 30%, var(--bg-top), var(--bg-bottom));
+    font-family: "BIZ UDPGothic", "BIZ UDGothic", "Hiragino Sans", sans-serif;
+    color: var(--text);
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  #main-wrap { position: fixed; inset: 0; }
+  canvas { display: block; touch-action: none; }
+
+  /* 小窓（両方ビューのときのサブ表示）：タップで中身を切りかえ */
+  #inset-wrap {
+    position: fixed; top: 12px; right: 12px;
+    width: 32vw; max-width: 240px; aspect-ratio: 1 / 1;
+    border: 2px solid var(--panel-border); border-radius: 14px;
+    overflow: hidden; display: none; cursor: pointer;
+    background: rgba(2,6,15,0.6);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  #inset-wrap.show { display: block; }
+  #inset-wrap canvas { width: 100%; height: 100%; }
+  #inset-label {
+    position: absolute; left: 8px; right: 8px; bottom: 6px;
+    font-size: 12px; opacity: 0.9; pointer-events: none;
+    text-shadow: 0 1px 3px #000;
+  }
+
+  /* 季節・月のバッジ */
+  #badges {
+    position: fixed; top: 14px; left: 14px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    pointer-events: none;
+  }
+  #season-badge, #moon-badge {
+    padding: 6px 16px; border-radius: 12px;
+    background: rgba(2,6,15,0.55); border: 1px solid var(--panel-border);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  #season-badge { font-size: 20px; font-weight: 700; }
+  #moon-badge { font-size: 15px; font-weight: 700; display: none; }
+
+  /* 地球から見た月ビューでの「太陽の方向」 */
+  #sun-dir {
+    position: fixed; top: 45%;
+    font-size: 15px; font-weight: 700; color: var(--sun);
+    padding: 4px 12px; border-radius: 10px;
+    background: rgba(2,6,15,0.55);
+    pointer-events: none; display: none;
+  }
+  #sun-dir.left   { left: 12px; right: auto; transform: none; }
+  #sun-dir.right  { right: 12px; left: auto; transform: none; }
+  #sun-dir.center { left: 50%; right: auto; top: 22%; transform: translateX(-50%); }
+
+  /* スライダー（控えめに・2本） */
+  .slider-zone {
+    position: fixed; left: 12px; right: 12px; bottom: 76px;
+    padding: 4px 8px 4px;
+    pointer-events: none;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .slider-row { display: flex; align-items: flex-end; gap: 8px; }
+  .slider-row .lab {
+    flex: 0 0 2.4em; font-size: 12px; font-weight: 700; opacity: 0.6;
+    padding-bottom: 4px;
+  }
+  .slider-col { flex: 1; }
+  .slider-zone input[type=range] { pointer-events: auto; }
+  .slider-marks {
+    position: relative; height: 14px; margin: 0 6px 0;
+    font-size: 11px; font-weight: 500;
+    opacity: 0.5;
+  }
+  .slider-marks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 2px; border-radius: 2px;
+    background: rgba(255,255,255,0.25);
+    outline: none; margin: 6px 0;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.4);
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.4);
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-track {
+    height: 2px; border-radius: 2px; background: rgba(255,255,255,0.25);
+  }
+
+  /* 操作パネル */
+  .panel {
+    position: fixed; bottom: 14px; left: 8px; right: 8px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: nowrap;
+    justify-content: safe center;
+    background: rgba(2, 6, 15, 0.55);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    padding: 8px 10px; border-radius: 16px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .panel::-webkit-scrollbar { display: none; }
+  .btn {
+    appearance: none; border: 1px solid var(--panel-border);
+    background: rgba(255,255,255,0.06); color: var(--text);
+    font: inherit; font-size: 15px; font-weight: 600;
+    padding: 10px 14px; border-radius: 12px; cursor: pointer;
+    min-height: 44px; flex: 0 0 auto;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: rgba(255,255,255,0.14); }
+  .btn:active { transform: scale(0.96); }
+  .btn.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .hint {
+    position: fixed; top: 110px; left: 0; right: 0; text-align: center;
+    font-size: 13px; opacity: 0.7; pointer-events: none; transition: opacity 0.6s;
+  }
+  .loading {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; opacity: 0.8; z-index: 5; transition: opacity 0.4s;
+  }
+  .loading.hide { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="main-wrap"></div>
+<div id="inset-wrap"><div id="inset-label"></div></div>
+
+<div id="badges">
+  <div id="season-badge">春</div>
+  <div id="moon-badge">月：新月</div>
+</div>
+<div id="sun-dir"></div>
+<div class="hint" id="hint">ドラッグで まわせます。ピンチ／ホイールで 大きさを かえられます。</div>
+<div class="loading" id="loading">読み込み中…</div>
+
+<div class="slider-zone">
+  <div class="slider-row">
+    <span class="lab">季節</span>
+    <div class="slider-col">
+      <div class="slider-marks" id="seasonMarks"></div>
+      <input type="range" id="orbitSlider" min="0" max="1000" value="0">
+    </div>
+  </div>
+  <div class="slider-row">
+    <span class="lab">月</span>
+    <div class="slider-col">
+      <div class="slider-marks" id="moonMarks"></div>
+      <input type="range" id="moonSlider" min="0" max="360" value="0" step="1">
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <button class="btn" id="viewBtn">公転ビュー</button>
+  <button class="btn" id="resetBtn">視点リセット</button>
+  <button class="btn on" id="playBtn">公転</button>
+  <button class="btn on" id="rotateBtn">自転</button>
+  <button class="btn" id="axisBtn">地軸</button>
+  <button class="btn" id="orbitBtn">軌道</button>
+  <button class="btn" id="speedBtn">速さ：ふつう</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  // ============================================================
+  //  定数・設定
+  // ============================================================
+  const AXIS_TILT = 23.4 * Math.PI / 180;     // 地軸の傾き
+  const EARTH_TEX = 'https://sorafjah.github.io/earth-orbit/earth1024.jpg';
+  const SUN_TEX   = 'https://sorafjah.github.io/earth-orbit/sun1024.jpg';
+  // ★ 月の満ち欠けアプリの moon1024.jpg を earth-orbit リポジトリに置いてください
+  //   （別の場所に置いた場合は、このURLを書きかえてください）
+  const MOON_TEX  = 'https://sorafjah.github.io/earth-orbit/moon1024.jpg';
+
+  const ORBIT_RADIUS      = 9;     // 地球の公転半径
+  const SUN_RADIUS        = 2.2;   // 太陽の大きさ
+  const EARTH_RADIUS      = 1.0;   // 地球の大きさ
+  const MOON_ORBIT_RADIUS = 2.2;   // 月の公転半径（見やすさ優先で実際より近い）
+  const MOON_RADIUS       = 0.3;   // 月の大きさ
+
+  // 1年（地球が1周）のあいだに、満ち欠けがくりかえす回数（約12.4回）
+  const MONTHS_PER_YEAR = 12.37;
+  const BASE_ORBIT_SPEED = 0.0045; // 1フレームあたりの公転角（もとのアプリと同じ）
+  const SPEEDS = [
+    { label: 'ゆっくり', v: 0.25 },
+    { label: 'ふつう',   v: 1.0 },
+    { label: 'はやい',   v: 2.5 }
+  ];
+  let speedIndex = 1;
+
+  // 地軸はワールド空間で +X 方向へ23.4°に固定（北極は常に同じ向き）
+  const TILT_DIR = new THREE.Vector3(Math.sin(AXIS_TILT), Math.cos(AXIS_TILT), 0);
+
+  // XZ平面上の方向。角度が増えると、北(上)から見て反時計回り。
+  //   0 → 画面の上、π/2 → 左、π → 下、3π/2 → 右
+  function dirOnOrbit(a) {
+    return new THREE.Vector3(-Math.sin(a), 0, -Math.cos(a));
+  }
+  // 地球の位置：春=上、夏=左、秋=下、冬=右
+  function earthPos(theta) {
+    return dirOnOrbit(theta).multiplyScalar(ORBIT_RADIUS);
+  }
+  // 地球から見た月の位置。
+  //   moonPhase は「地球から見た太陽の方向」から反時計回りにはかった角度。
+  //   0=新月（太陽と同じ側）、π/2=上弦、π=満月、3π/2=下弦
+  function moonOffset(theta, moonPhase) {
+    return dirOnOrbit(theta + Math.PI + moonPhase).multiplyScalar(MOON_ORBIT_RADIUS);
+  }
+
+  function seasonOf(theta) {
+    const x = -Math.sin(theta);
+    const z = -Math.cos(theta);
+    if (z < -0.5) return '春';
+    if (x < -0.5) return '夏';
+    if (z >  0.5) return '秋';
+    if (x >  0.5) return '冬';
+    return z < 0 ? '春' : '秋';
+  }
+
+  function moonPhaseName(phase) {
+    let a = phase * 180 / Math.PI;
+    a = ((a % 360) + 360) % 360;
+    const W = 11;
+    if (a < W || a >= 360 - W) return '新月';
+    if (Math.abs(a - 90)  < W) return '上弦の月';
+    if (Math.abs(a - 180) < W) return '満月';
+    if (Math.abs(a - 270) < W) return '下弦の月';
+    return '';
+  }
+
+  const SEASON_MARKS = [
+    { label: '春', pos: 0.00 }, { label: '夏', pos: 0.25 },
+    { label: '秋', pos: 0.50 }, { label: '冬', pos: 0.75 },
+    { label: '春', pos: 1.00 }
+  ];
+  const MOON_MARKS = [
+    { label: '新月', pos: 0.00 }, { label: '上弦', pos: 0.25 },
+    { label: '満月', pos: 0.50 }, { label: '下弦', pos: 0.75 },
+    { label: '新月', pos: 1.00 }
+  ];
+
+  // ============================================================
+  //  シーン
+  // ============================================================
+  const mainWrap  = document.getElementById('main-wrap');
+  const insetWrap = document.getElementById('inset-wrap');
+  const loading   = document.getElementById('loading');
+
+  const scene = new THREE.Scene();
+
+  // 星空
+  const starGeo = new THREE.BufferGeometry();
+  const starCount = 1400, sp = new Float32Array(starCount*3);
+  for (let i = 0; i < starCount; i++) {
+    const r = 80 + Math.random()*60;
+    const t = Math.random()*Math.PI*2, p = Math.acos(2*Math.random()-1);
+    sp[i*3]   = r*Math.sin(p)*Math.cos(t);
+    sp[i*3+1] = r*Math.sin(p)*Math.sin(t);
+    sp[i*3+2] = r*Math.cos(p);
+  }
+  starGeo.setAttribute('position', new THREE.BufferAttribute(sp,3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color:0xffffff, size:0.4, sizeAttenuation:true })));
+
+  // 環境光は、月の欠けた部分がはっきり暗く見えるよう少し弱め
+  scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+
+  // 太陽（中心・自ら光る）
+  const sunGroup = new THREE.Group();
+  scene.add(sunGroup);
+  const sunMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+  const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 48, 48), sunMat);
+  sunGroup.add(sunMesh);
+  const sunLight = new THREE.PointLight(0xffffff, 2.0, 0, 0);
+  sunGroup.add(sunLight);
+
+  // 地球の公転軌道
+  const orbitRing = new THREE.Mesh(
+    new THREE.TorusGeometry(ORBIT_RADIUS, 0.025, 8, 120),
+    new THREE.MeshBasicMaterial({ color: 0x3a6ea5, transparent:true, opacity:0.5 })
+  );
+  orbitRing.rotation.x = Math.PI/2;
+  orbitRing.visible = false;
+  scene.add(orbitRing);
+
+  // 地球グループ（位置=公転、傾き=固定、自転=内側）
+  const earthOrbitPivot = new THREE.Group();
+  scene.add(earthOrbitPivot);
+  const earthTilt = new THREE.Group();
+  earthOrbitPivot.add(earthTilt);
+  const earthSpin = new THREE.Group();
+  earthTilt.add(earthSpin);
+  earthTilt.quaternion.copy(
+    new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), TILT_DIR.clone().normalize())
+  );
+
+  const earthMat = new THREE.MeshPhongMaterial({
+    color: 0x335577, shininess: 12, specular: new THREE.Color(0x223344)
+  });
+  const earthMesh = new THREE.Mesh(new THREE.SphereGeometry(EARTH_RADIUS, 64, 64), earthMat);
+  earthSpin.add(earthMesh);
+
+  // 地軸ライン＆赤道
+  const axisLine = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.02, 0.02, EARTH_RADIUS*2.8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffdd33 })
+  );
+  axisLine.visible = false;
+  earthSpin.add(axisLine);
+
+  const eqRing = new THREE.Mesh(
+    new THREE.TorusGeometry(EARTH_RADIUS*1.02, 0.012, 8, 64),
+    new THREE.MeshBasicMaterial({ color: 0xdd4444, transparent:true, opacity:0.5 })
+  );
+  eqRing.rotation.x = Math.PI/2;
+  eqRing.visible = false;
+  earthSpin.add(eqRing);
+
+  // 月の公転軌道（地球といっしょに動く。地軸の傾きとは無関係）
+  const moonOrbitRing = new THREE.Mesh(
+    new THREE.TorusGeometry(MOON_ORBIT_RADIUS, 0.015, 8, 96),
+    new THREE.MeshBasicMaterial({ color: 0x8899bb, transparent:true, opacity:0.5 })
+  );
+  moonOrbitRing.rotation.x = Math.PI/2;
+  moonOrbitRing.visible = false;
+  earthOrbitPivot.add(moonOrbitRing);
+
+  // 月：ピボットを地球に向ける（潮汐ロック＝いつも同じ面が地球側）
+  const moonPivot = new THREE.Group();
+  scene.add(moonPivot);
+  const moonMat = new THREE.MeshPhongMaterial({ color: 0xbbbbbb, shininess: 2, specular: new THREE.Color(0x111111) });
+  const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(MOON_RADIUS, 48, 48), moonMat);
+  // 月の満ち欠けアプリと同じ向き合わせ（表側を地球に向ける）
+  moonMesh.rotation.set(0, -Math.PI / 2, 0);
+  moonPivot.add(moonMesh);
+
+  // テクスチャ読み込み
+  const loader = new THREE.TextureLoader();
+  loader.crossOrigin = 'anonymous';
+  let pending = 3;
+  function doneOne() { if (--pending <= 0) loading.classList.add('hide'); }
+  loader.load(EARTH_TEX, (tex) => {
+    tex.anisotropy = 4; earthMat.map = tex; earthMat.color.set(0xffffff); earthMat.needsUpdate = true; doneOne();
+  }, undefined, () => { loading.textContent = '画像の読み込みに失敗しました'; });
+  loader.load(SUN_TEX, (tex) => {
+    tex.anisotropy = 4; sunMat.map = tex; sunMat.color.set(0xffffff); sunMat.needsUpdate = true; doneOne();
+  }, undefined, doneOne);
+  loader.load(MOON_TEX, (tex) => {
+    tex.anisotropy = 4; moonMat.map = tex; moonMat.color.set(0xffffff); moonMat.needsUpdate = true; doneOne();
+  }, undefined, doneOne); // 月の画像がなくても灰色の月で動く
+
+  // ============================================================
+  //  レンダラー・カメラ
+  // ============================================================
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  mainWrap.appendChild(renderer.domElement);
+
+  const insetRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  insetRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  insetWrap.appendChild(insetRenderer.domElement);
+
+  const orbitCam = new THREE.PerspectiveCamera(45, 1, 0.1, 1000); // 公転の俯瞰
+  const earthCam = new THREE.PerspectiveCamera(45, 1, 0.1, 1000); // 地球と月のアップ
+  const moonCam  = new THREE.PerspectiveCamera(30, 1, 0.05, 1000); // 地球から見た月
+  const insetCam = new THREE.PerspectiveCamera(45, 1, 0.05, 1000); // 小窓
+
+  const ORBIT_DEFAULT = { dist: 30, yaw: 0, pitch: -Math.PI/2 + 0.18 };
+  const EARTH_DEFAULT = { dist: 7, yaw: 0, pitch: -0.35 };
+  const MOON_FOV_DEFAULT = 30;
+
+  let orbitDist = ORBIT_DEFAULT.dist, orbitYaw = ORBIT_DEFAULT.yaw, orbitPitch = ORBIT_DEFAULT.pitch;
+  let earthDist = EARTH_DEFAULT.dist, earthYaw = EARTH_DEFAULT.yaw, earthPitch = EARTH_DEFAULT.pitch;
+  let moonFov = MOON_FOV_DEFAULT;
+
+  // ============================================================
+  //  状態
+  // ============================================================
+  const VIEWS = ['orbit', 'earth', 'moon', 'both'];
+  const VIEW_LABEL = { orbit:'公転ビュー', earth:'地球ビュー', moon:'地球から見た月', both:'両方ビュー' };
+  let viewIndex = 0;
+  let currentView = VIEWS[viewIndex];
+  let insetMode = 'earth';   // 小窓の中身：'earth'（地球と月）/ 'moon'（地球から見た月）
+
+  let theta = 0;             // 地球の公転角
+  let moonPhase = 0;         // 月の位置（太陽の方向からの角度）
+  let playing = true;
+  let autoSpin = true;
+  let earthSpinAngle = 0;
+
+  const slider = document.getElementById('orbitSlider');
+  const moonSlider = document.getElementById('moonSlider');
+  const SLIDER_MAX = 1000;
+
+  function buildMarks(id, list) {
+    const box = document.getElementById(id);
+    list.forEach(m => {
+      const s = document.createElement('span');
+      s.textContent = m.label;
+      s.style.left = (m.pos * 100) + '%';
+      box.appendChild(s);
+    });
+  }
+  buildMarks('seasonMarks', SEASON_MARKS);
+  buildMarks('moonMarks', MOON_MARKS);
+
+  // ============================================================
+  //  ドラッグ・ズーム
+  // ============================================================
+  let dragging = false, lastX = 0, lastY = 0, pinch = 0;
+
+  function activeCamState() {
+    if (currentView === 'earth') return 'earth';
+    if (currentView === 'moon')  return 'moon';
+    return 'orbit';
+  }
+
+  function onDown(x, y) { dragging = true; lastX = x; lastY = y; }
+  function onMove(x, y) {
+    if (!dragging) return;
+    const dx = x - lastX, dy = y - lastY;
+    const st = activeCamState();
+    if (st === 'orbit') {
+      orbitYaw   -= dx * 0.006;
+      orbitPitch -= dy * 0.006;
+      orbitPitch = Math.max(-Math.PI/2 + 0.02, Math.min(-0.05, orbitPitch));
+    } else if (st === 'earth') {
+      earthYaw   -= dx * 0.006;
+      earthPitch -= dy * 0.006;
+      earthPitch = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, earthPitch));
+    }
+    // 地球から見た月ビューは、いつも月の方を向くので回転なし
+    lastX = x; lastY = y;
+  }
+  function onUp() { dragging = false; pinch = 0; }
+
+  function zoom(delta) {
+    const st = activeCamState();
+    if (st === 'orbit') {
+      orbitDist = Math.max(12, Math.min(60, orbitDist + delta));
+    } else if (st === 'earth') {
+      earthDist = Math.max(2.4, Math.min(16, earthDist + delta));
+    } else {
+      moonFov = Math.max(8, Math.min(60, moonFov + delta * 1.5));
+    }
+  }
+
+  const md = renderer.domElement;
+  md.addEventListener('mousedown', e => onDown(e.clientX, e.clientY));
+  window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+  window.addEventListener('mouseup', onUp);
+  md.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY * 0.01); }, { passive:false });
+
+  md.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) onDown(e.touches[0].clientX, e.touches[0].clientY);
+    else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinch = Math.hypot(dx, dy);
+    }
+  }, { passive:false });
+  md.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (e.touches.length === 1) onMove(e.touches[0].clientX, e.touches[0].clientY);
+    else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const d = Math.hypot(dx, dy);
+      if (pinch) zoom(-(d - pinch) * 0.04);
+      pinch = d;
+    }
+  }, { passive:false });
+  md.addEventListener('touchend', e => { if (e.touches.length === 0) onUp(); });
+
+  // ============================================================
+  //  ボタン
+  // ============================================================
+  const viewBtn    = document.getElementById('viewBtn');
+  const playBtn    = document.getElementById('playBtn');
+  const axisBtn    = document.getElementById('axisBtn');
+  const orbitBtn   = document.getElementById('orbitBtn');
+  const rotateBtn  = document.getElementById('rotateBtn');
+  const resetBtn   = document.getElementById('resetBtn');
+  const speedBtn   = document.getElementById('speedBtn');
+  const badge      = document.getElementById('season-badge');
+  const moonBadge  = document.getElementById('moon-badge');
+  const insetLabel = document.getElementById('inset-label');
+  const sunDir     = document.getElementById('sun-dir');
+  const hint       = document.getElementById('hint');
+
+  function updateInsetLabel() {
+    insetLabel.textContent = (insetMode === 'earth' ? '地球と月' : '地球から見た月') + '（タップで切替）';
+  }
+
+  function applyView() {
+    currentView = VIEWS[viewIndex];
+    viewBtn.textContent = VIEW_LABEL[currentView];
+    insetWrap.classList.toggle('show', currentView === 'both');
+    if (currentView === 'both') updateInsetLabel();
+    if (currentView !== 'moon') sunDir.style.display = 'none';
+    resize();
+  }
+
+  function cycleView(dir) {
+    viewIndex = (viewIndex + dir + VIEWS.length) % VIEWS.length;
+    applyView();
+  }
+
+  viewBtn.addEventListener('click', () => cycleView(1));
+  window.addEventListener('keydown', e => {
+    if (e.key === '1') cycleView(-1);
+    else if (e.key === '3') cycleView(1);
+  });
+
+  insetWrap.addEventListener('click', () => {
+    insetMode = (insetMode === 'earth') ? 'moon' : 'earth';
+    updateInsetLabel();
+  });
+
+  playBtn.addEventListener('click', () => {
+    playing = !playing;
+    playBtn.classList.toggle('on', playing);
+  });
+
+  axisBtn.addEventListener('click', () => {
+    const v = !axisLine.visible;
+    axisLine.visible = v; eqRing.visible = v;
+    axisBtn.classList.toggle('on', v);
+  });
+
+  orbitBtn.addEventListener('click', () => {
+    const v = !orbitRing.visible;
+    orbitRing.visible = v; moonOrbitRing.visible = v;
+    orbitBtn.classList.toggle('on', v);
+  });
+
+  rotateBtn.addEventListener('click', () => {
+    autoSpin = !autoSpin;
+    rotateBtn.classList.toggle('on', autoSpin);
+  });
+
+  speedBtn.addEventListener('click', () => {
+    speedIndex = (speedIndex + 1) % SPEEDS.length;
+    speedBtn.textContent = '速さ：' + SPEEDS[speedIndex].label;
+  });
+
+  resetBtn.addEventListener('click', () => {
+    const st = activeCamState();
+    if (st === 'orbit') {
+      orbitYaw = ORBIT_DEFAULT.yaw; orbitPitch = ORBIT_DEFAULT.pitch; orbitDist = ORBIT_DEFAULT.dist;
+    } else if (st === 'earth') {
+      earthYaw = EARTH_DEFAULT.yaw; earthPitch = EARTH_DEFAULT.pitch; earthDist = EARTH_DEFAULT.dist;
+    } else {
+      moonFov = MOON_FOV_DEFAULT;
+    }
+  });
+
+  function stopPlay() {
+    playing = false;
+    playBtn.classList.remove('on');
+  }
+  // 季節スライダー → 地球の公転角（月の満ち欠けはそのまま）
+  slider.addEventListener('input', () => {
+    stopPlay();
+    theta = (parseFloat(slider.value) / SLIDER_MAX) * Math.PI * 2;
+  });
+  // 月スライダー → 月の位置（新月〜満月〜新月）
+  moonSlider.addEventListener('input', () => {
+    stopPlay();
+    moonPhase = parseFloat(moonSlider.value) * Math.PI / 180;
+  });
+
+  setTimeout(() => { hint.style.opacity = '0'; }, 5000);
+
+  // ============================================================
+  //  カメラ位置の更新
+  // ============================================================
+  const sphericalToVec = (dist, yaw, pitch) => {
+    const x = dist * Math.cos(pitch) * Math.sin(yaw);
+    const y = dist * Math.sin(-pitch);
+    const z = dist * Math.cos(pitch) * Math.cos(yaw);
+    return new THREE.Vector3(x, y, z);
+  };
+
+  function updateOrbitCam() {
+    const off = sphericalToVec(orbitDist, orbitYaw, orbitPitch);
+    // 注視点を少し手前にずらし、軌道全体を画面の上寄りに（下のスライダーと重ならない）
+    const target = new THREE.Vector3(0, 0, ORBIT_RADIUS * 0.32);
+    orbitCam.position.copy(off).add(target);
+    orbitCam.lookAt(target);
+  }
+
+  function updateEarthCam(earthWorldPos) {
+    const off = sphericalToVec(earthDist, earthYaw, earthPitch);
+    earthCam.position.copy(earthWorldPos).add(off);
+    earthCam.lookAt(earthWorldPos);
+  }
+
+  // 地球の中心から月を見る（上＝北）。北半球から見た向きになる。
+  function aimFromEarth(cam, earthW, moonW, fov) {
+    cam.position.copy(earthW);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(moonW);
+    if (cam.fov !== fov) { cam.fov = fov; cam.updateProjectionMatrix(); }
+  }
+
+  // 地球から見るときは、地球本体・軌道線・太陽の円盤をかくす（光はそのまま）
+  function renderFromEarth(r, cam) {
+    const saved = [earthSpin.visible, orbitRing.visible, moonOrbitRing.visible, sunMesh.visible];
+    earthSpin.visible = false;
+    orbitRing.visible = false;
+    moonOrbitRing.visible = false;
+    sunMesh.visible = false;
+    r.render(scene, cam);
+    [earthSpin.visible, orbitRing.visible, moonOrbitRing.visible, sunMesh.visible] = saved;
+  }
+
+  // 地球から見た月ビューで、太陽がどちら側にあるかを表示
+  const SUN_POS = new THREE.Vector3(0, 0, 0);
+  let lastSunDirText = '';
+  function updateSunDir(cam) {
+    cam.updateMatrixWorld();
+    const v = SUN_POS.clone().applyMatrix4(cam.matrixWorldInverse);
+    const front = -v.z / v.length();   // 1なら真正面、-1なら真うしろ
+    let text, cls;
+    if (front > 0.95)       { text = '月の むこうに 太陽'; cls = 'center'; }
+    else if (front < -0.95) { text = 'うしろに 太陽';      cls = 'center'; }
+    else if (v.x < 0)       { text = '← 太陽';            cls = 'left'; }
+    else                    { text = '太陽 →';            cls = 'right'; }
+    sunDir.style.display = 'block';
+    if (text !== lastSunDirText) {
+      sunDir.textContent = text;
+      sunDir.className = cls;
+      lastSunDirText = text;
+    }
+  }
+
+  // ============================================================
+  //  リサイズ
+  // ============================================================
+  function resize() {
+    const w = innerWidth, h = innerHeight;
+    renderer.setSize(w, h);
+    [orbitCam, earthCam, moonCam].forEach(c => { c.aspect = w / h; c.updateProjectionMatrix(); });
+
+    if (currentView === 'both') {
+      const r = insetWrap.getBoundingClientRect();
+      insetRenderer.setSize(r.width, r.height);
+      insetCam.aspect = r.width / r.height;
+      insetCam.updateProjectionMatrix();
+    }
+  }
+  window.addEventListener('resize', resize);
+
+  // ============================================================
+  //  メインループ
+  // ============================================================
+  let lastSeason = '', lastMoonName = null;
+  const TWO_PI = Math.PI * 2;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const speed = SPEEDS[speedIndex].v;
+
+    // 公転：地球が1周するあいだに、月は約12.4回満ち欠けする
+    if (playing) {
+      const d = BASE_ORBIT_SPEED * speed;
+      theta += d;
+      if (theta >= TWO_PI) theta -= TWO_PI;
+      moonPhase = (moonPhase + d * MONTHS_PER_YEAR) % TWO_PI;
+      slider.value = (theta / TWO_PI) * SLIDER_MAX;
+      moonSlider.value = moonPhase * 180 / Math.PI;
+    }
+
+    // 地球と月の位置
+    const earthW = earthPos(theta);
+    earthOrbitPivot.position.copy(earthW);
+    const moonW = earthW.clone().add(moonOffset(theta, moonPhase));
+    moonPivot.position.copy(moonW);
+    moonPivot.lookAt(earthW);
+
+    // 地球の自転
+    if (autoSpin) earthSpinAngle += 0.01 * speed;
+    earthSpin.rotation.y = earthSpinAngle;
+
+    // バッジ
+    const s = seasonOf(theta);
+    if (s !== lastSeason) { badge.textContent = s; lastSeason = s; }
+    const mn = moonPhaseName(moonPhase);
+    if (mn !== lastMoonName) {
+      if (mn) { moonBadge.textContent = '月：' + mn; moonBadge.style.display = 'block'; }
+      else    { moonBadge.style.display = 'none'; }
+      lastMoonName = mn;
+    }
+
+    sunMesh.rotation.y += 0.0008;
+
+    // メイン描画
+    updateOrbitCam();
+    updateEarthCam(earthW);
+    if (currentView === 'earth') {
+      renderer.render(scene, earthCam);
+    } else if (currentView === 'moon') {
+      aimFromEarth(moonCam, earthW, moonW, moonFov);
+      renderFromEarth(renderer, moonCam);
+      updateSunDir(moonCam);
+    } else {
+      renderer.render(scene, orbitCam);
+    }
+
+    // 小窓（両方ビューのみ）
+    if (currentView === 'both') {
+      if (insetMode === 'earth') {
+        insetCam.position.copy(earthCam.position);
+        insetCam.quaternion.copy(earthCam.quaternion);
+        if (insetCam.fov !== 45) { insetCam.fov = 45; insetCam.updateProjectionMatrix(); }
+        insetRenderer.render(scene, insetCam);
+      } else {
+        aimFromEarth(insetCam, earthW, moonW, MOON_FOV_DEFAULT);
+        renderFromEarth(insetRenderer, insetCam);
+      }
+    }
+  }
+
+  applyView();
+  resize();
+  animate();
+})();
+</script>
+</body>
+</html>
