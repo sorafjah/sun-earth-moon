@@ -206,11 +206,11 @@
   const MONTHS_PER_YEAR = 12.37;
   const BASE_ORBIT_SPEED = 0.0045; // 1フレームあたりの公転角（もとのアプリと同じ）
   const SPEEDS = [
-    { label: 'ゆっくり', v: 0.25 },
-    { label: 'ふつう',   v: 1.0 },
-    { label: 'はやい',   v: 2.5 }
+    { label: 'ゆっくり', v: 0.08 },
+    { label: 'ふつう',   v: 0.25 },
+    { label: 'はやい',   v: 1.0 }
   ];
-  let speedIndex = 1;
+  let speedIndex = 1;   // 初期は「ふつう」
 
   // 地軸はワールド空間で +X 方向へ23.4°に固定（北極は常に同じ向き）
   const TILT_DIR = new THREE.Vector3(Math.sin(AXIS_TILT), Math.cos(AXIS_TILT), 0);
