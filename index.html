@@ -176,7 +176,8 @@
 <div class="panel">
   <button class="btn" id="viewBtn">公転ビュー</button>
   <button class="btn" id="resetBtn">視点リセット</button>
-  <button class="btn on" id="playBtn">公転</button>
+  <button class="btn on" id="playBtn">地球の公転</button>
+  <button class="btn on" id="moonPlayBtn">月の公転</button>
   <button class="btn on" id="rotateBtn">自転</button>
   <button class="btn" id="axisBtn">地軸</button>
   <button class="btn" id="orbitBtn">軌道</button>
@@ -407,7 +408,8 @@
 
   let theta = 0;             // 地球の公転角
   let moonPhase = 0;         // 月の位置（太陽の方向からの角度）
-  let playing = true;
+  let playing = true;        // 地球の公転
+  let moonPlaying = true;    // 月の公転（満ち欠け）
   let autoSpin = true;
   let earthSpinAngle = 0;
 
@@ -498,8 +500,9 @@
   // ============================================================
   //  ボタン
   // ============================================================
-  const viewBtn    = document.getElementById('viewBtn');
-  const playBtn    = document.getElementById('playBtn');
+  const viewBtn     = document.getElementById('viewBtn');
+  const playBtn     = document.getElementById('playBtn');
+  const moonPlayBtn = document.getElementById('moonPlayBtn');
   const axisBtn    = document.getElementById('axisBtn');
   const orbitBtn   = document.getElementById('orbitBtn');
   const rotateBtn  = document.getElementById('rotateBtn');
@@ -545,6 +548,11 @@
     playBtn.classList.toggle('on', playing);
   });
 
+  moonPlayBtn.addEventListener('click', () => {
+    moonPlaying = !moonPlaying;
+    moonPlayBtn.classList.toggle('on', moonPlaying);
+  });
+
   axisBtn.addEventListener('click', () => {
     const v = !axisLine.visible;
     axisLine.visible = v; eqRing.visible = v;
@@ -578,18 +586,22 @@
     }
   });
 
-  function stopPlay() {
+  function stopEarthPlay() {
     playing = false;
     playBtn.classList.remove('on');
   }
+  function stopMoonPlay() {
+    moonPlaying = false;
+    moonPlayBtn.classList.remove('on');
+  }
   // 季節スライダー → 地球の公転角（月の満ち欠けはそのまま）
   slider.addEventListener('input', () => {
-    stopPlay();
+    stopEarthPlay();
     theta = (parseFloat(slider.value) / SLIDER_MAX) * Math.PI * 2;
   });
   // 月スライダー → 月の位置（新月〜満月〜新月）
   moonSlider.addEventListener('input', () => {
-    stopPlay();
+    stopMoonPlay();
     moonPhase = parseFloat(moonSlider.value) * Math.PI / 180;
   });
 
@@ -685,13 +697,17 @@
     requestAnimationFrame(animate);
     const speed = SPEEDS[speedIndex].v;
 
-    // 公転：地球が1周するあいだに、月は約12.4回満ち欠けする
+    // 地球の公転と月の公転（満ち欠け）は、それぞれ独立に再生・停止できる
+    const d = BASE_ORBIT_SPEED * speed;
     if (playing) {
-      const d = BASE_ORBIT_SPEED * speed;
       theta += d;
       if (theta >= TWO_PI) theta -= TWO_PI;
-      moonPhase = (moonPhase + d * MONTHS_PER_YEAR) % TWO_PI;
       slider.value = (theta / TWO_PI) * SLIDER_MAX;
+    }
+    if (moonPlaying) {
+      // 両方再生中は、地球が1周するあいだに月が約12.4回満ち欠けする速さ
+      moonPhase = (moonPhase + d * MONTHS_PER_YEAR) % TWO_PI;
+      if (moonPhase < 0) moonPhase += TWO_PI;
       moonSlider.value = moonPhase * 180 / Math.PI;
     }
 
