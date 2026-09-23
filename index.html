@@ -48,13 +48,12 @@
     display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
     pointer-events: none;
   }
-  #season-badge, #moon-badge {
+  #season-badge {
     padding: 6px 16px; border-radius: 12px;
     background: rgba(2,6,15,0.55); border: 1px solid var(--panel-border);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
   #season-badge { font-size: 20px; font-weight: 700; }
-  #moon-badge { font-size: 15px; font-weight: 700; display: none; }
 
   /* 地球から見た月ビューでの「太陽の方向」 */
   #sun-dir {
@@ -150,7 +149,6 @@
 
 <div id="badges">
   <div id="season-badge">春</div>
-  <div id="moon-badge">月：新月</div>
 </div>
 <div id="sun-dir"></div>
 <div class="hint" id="hint">ドラッグで まわせます。ピンチ／ホイールで 大きさを かえられます。</div>
@@ -164,7 +162,7 @@
       <input type="range" id="orbitSlider" min="0" max="1000" value="0">
     </div>
   </div>
-  <div class="slider-row">
+  <div class="slider-row" id="moonSliderRow">
     <span class="lab">月</span>
     <div class="slider-col">
       <div class="slider-marks" id="moonMarks"></div>
@@ -512,7 +510,6 @@
   const resetBtn   = document.getElementById('resetBtn');
   const speedBtn   = document.getElementById('speedBtn');
   const badge      = document.getElementById('season-badge');
-  const moonBadge  = document.getElementById('moon-badge');
   const insetLabel = document.getElementById('inset-label');
   const sunDir     = document.getElementById('sun-dir');
   const hint       = document.getElementById('hint');
@@ -551,11 +548,14 @@
     updateInsetLabel();
   });
 
+  const moonSliderRow = document.getElementById('moonSliderRow');
+
   moonVisBtn.addEventListener('click', () => {
     moonVisible = !moonVisible;
     moonVisBtn.classList.toggle('on', moonVisible);
     moonPivot.visible = moonVisible;
     moonOrbitRing.visible = moonVisible && orbitRing.visible;
+    moonSliderRow.style.display = moonVisible ? '' : 'none';
     if (!moonVisible && (currentView === 'moon' || (currentView === 'both' && insetMode === 'moon'))) {
       if (currentView === 'moon') cycleView(1);
       if (insetMode === 'moon') { insetMode = 'earth'; updateInsetLabel(); }
@@ -580,7 +580,8 @@
 
   orbitBtn.addEventListener('click', () => {
     const v = !orbitRing.visible;
-    orbitRing.visible = v; moonOrbitRing.visible = v;
+    orbitRing.visible = v;
+    moonOrbitRing.visible = v && moonVisible;
     orbitBtn.classList.toggle('on', v);
   });
 
@@ -709,7 +710,7 @@
   // ============================================================
   //  メインループ
   // ============================================================
-  let lastSeason = '', lastMoonName = null;
+  let lastSeason = '';
   const TWO_PI = Math.PI * 2;
 
   function animate() {
@@ -744,12 +745,6 @@
     // バッジ
     const s = seasonOf(theta);
     if (s !== lastSeason) { badge.textContent = s; lastSeason = s; }
-    const mn = moonPhaseName(moonPhase);
-    if (mn !== lastMoonName) {
-      if (mn) { moonBadge.textContent = '月：' + mn; moonBadge.style.display = 'block'; }
-      else    { moonBadge.style.display = 'none'; }
-      lastMoonName = mn;
-    }
 
     sunMesh.rotation.y += 0.0008;
 
