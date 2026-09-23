@@ -178,6 +178,7 @@
   <button class="btn" id="resetBtn">視点リセット</button>
   <button class="btn on" id="playBtn">地球の公転</button>
   <button class="btn on" id="moonPlayBtn">月の公転</button>
+  <button class="btn on" id="moonVisBtn">月</button>
   <button class="btn on" id="rotateBtn">自転</button>
   <button class="btn" id="axisBtn">地軸</button>
   <button class="btn" id="orbitBtn">軌道</button>
@@ -410,6 +411,7 @@
   let moonPhase = 0;         // 月の位置（太陽の方向からの角度）
   let playing = true;        // 地球の公転
   let moonPlaying = true;    // 月の公転（満ち欠け）
+  let moonVisible = true;    // 月の表示/非表示
   let autoSpin = true;
   let earthSpinAngle = 0;
 
@@ -503,6 +505,7 @@
   const viewBtn     = document.getElementById('viewBtn');
   const playBtn     = document.getElementById('playBtn');
   const moonPlayBtn = document.getElementById('moonPlayBtn');
+  const moonVisBtn  = document.getElementById('moonVisBtn');
   const axisBtn    = document.getElementById('axisBtn');
   const orbitBtn   = document.getElementById('orbitBtn');
   const rotateBtn  = document.getElementById('rotateBtn');
@@ -529,6 +532,10 @@
 
   function cycleView(dir) {
     viewIndex = (viewIndex + dir + VIEWS.length) % VIEWS.length;
+    // 月が非表示のときは「地球から見た月」ビューを飛ばす
+    if (!moonVisible && VIEWS[viewIndex] === 'moon') {
+      viewIndex = (viewIndex + dir + VIEWS.length) % VIEWS.length;
+    }
     applyView();
   }
 
@@ -539,8 +546,20 @@
   });
 
   insetWrap.addEventListener('click', () => {
+    if (!moonVisible) return;
     insetMode = (insetMode === 'earth') ? 'moon' : 'earth';
     updateInsetLabel();
+  });
+
+  moonVisBtn.addEventListener('click', () => {
+    moonVisible = !moonVisible;
+    moonVisBtn.classList.toggle('on', moonVisible);
+    moonPivot.visible = moonVisible;
+    moonOrbitRing.visible = moonVisible && orbitRing.visible;
+    if (!moonVisible && (currentView === 'moon' || (currentView === 'both' && insetMode === 'moon'))) {
+      if (currentView === 'moon') cycleView(1);
+      if (insetMode === 'moon') { insetMode = 'earth'; updateInsetLabel(); }
+    }
   });
 
   playBtn.addEventListener('click', () => {
