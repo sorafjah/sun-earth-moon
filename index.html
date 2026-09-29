@@ -202,8 +202,9 @@
   const MOON_ORBIT_RADIUS = 2.2;   // 月の公転半径（見やすさ優先で実際より近い）
   const MOON_RADIUS       = 0.3;   // 月の大きさ
 
-  // 1年（地球が1周）のあいだに、満ち欠けがくりかえす回数（約12.4回）
-  const MONTHS_PER_YEAR = 12.37;
+  // 1年（地球が1周）のあいだに、満ち欠けがくりかえす回数
+  // ※実際は約12.4回だが、見た目のバランス（自転を速く・月をゆっくりに）を優先して調整
+  const MONTHS_PER_YEAR = 6;
   const BASE_ORBIT_SPEED = 0.0045; // 1フレームあたりの公転角（もとのアプリと同じ）
   const SPEEDS = [
     { label: 'ゆっくり', v: 0.08 },
@@ -739,7 +740,7 @@
     moonPivot.lookAt(earthW);
 
     // 地球の自転
-    if (autoSpin) earthSpinAngle += 0.01 * speed;
+    if (autoSpin) earthSpinAngle += 0.32 * speed;
     earthSpin.rotation.y = earthSpinAngle;
 
     // バッジ
